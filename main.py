@@ -168,20 +168,39 @@ def pill_btn(text, active=False, width=None):
 #  Root fix: tidak ada re-binding saat ganti tab → tidak menumpuk di (0,0)
 # ════════════════════════════════════════════════════════
 class IconWidget(Widget):
-    """Base icon widget — binding pos/size hanya sekali, aman dari akkumulasi."""
+    """Base icon widget — binding pos/size hanya sekali, aman dari akkumulasi.
+
+    Kunci fix:  _laid_out flag.
+    set_color() dipanggil saat __init__ BottomNav (pos masih 0,0) → TIDAK
+    boleh gambar.  Gambar pertama kali hanya setelah pos event dari layout
+    benar-benar terjadi (_on_pos).  Setelah itu set_color() boleh langsung
+    gambar karena posisi sudah valid.
+    """
     def __init__(self, color, **kw):
         super().__init__(**kw)
-        self._color = list(color)
-        # Satu kali bind — tidak pernah ditambah lagi
-        self.bind(pos=self._redraw, size=self._redraw)
+        self._color    = list(color)
+        self._laid_out = False          # belum pernah dapat pos dari layout
+        # Pisah handler pos vs size supaya flag diset sebelum redraw
+        self.bind(pos=self._on_pos, size=self._on_size)
 
+    # ── layout events ────────────────────────────────────
+    def _on_pos(self, *_):
+        self._laid_out = True           # layout sudah jalan, posisi valid
+        self._redraw()
+
+    def _on_size(self, *_):
+        if self._laid_out:
+            self._redraw()
+
+    # ── public API ───────────────────────────────────────
     def set_color(self, color):
         """Update warna tanpa buat binding baru."""
         self._color = list(color)
-        self._redraw()
+        if self._laid_out:              # jangan gambar kalau belum di-layout
+            self._redraw()
 
-    def _redraw(self, *_):
-        # Guard: jangan gambar sebelum widget punya ukuran nyata
+    # ── internal ─────────────────────────────────────────
+    def _redraw(self):
         if self.width < 2 or self.height < 2:
             return
         self.canvas.clear()
