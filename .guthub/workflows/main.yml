@@ -16,8 +16,11 @@ jobs:
     timeout-minutes: 90
 
     env:
-      # Bump ini setiap mau force-invalidate semua cache
-      CACHE_VER: v7
+      # Bump ini untuk force-invalidate semua cache
+      CACHE_VER: v8
+      # System SDK path (sudah ada di GitHub runner, tidak perlu download)
+      ANDROID_SDK:  /usr/local/lib/android/sdk
+      ANDROID_NDK:  /usr/local/lib/android/sdk/ndk/27.3.13750724
 
     steps:
       # ── 1. Checkout ─────────────────────────────────────────────────────────
@@ -49,7 +52,42 @@ jobs:
             build-essential ccache lld \
             --no-install-recommends
 
-      # ── 5. Cache ~/.buildozer (NDK r25b + SDK + python-for-android) ─────────
+      # ── 5. Siapkan system SDK (build-tools + lisensi) ───────────────────────
+      # FIX: Buildozer kelola SDK-nya sendiri di ~/.buildozer, tapi
+      # sdkmanager-nya gagal install build-tools (silent fail).
+      # Solusi: paksa buildozer pakai SYSTEM SDK via env var ANDROIDSDK + ANDROIDNDK.
+      # System SDK sudah ada di /usr/local/lib/android/sdk dengan build-tools,
+      # platform-tools, dan NDK 27.3 (tidak perlu download apapun).
+      - name: Prepare system SDK (accept licenses + verify build-tools)
+        run: |
+          SDKMAN="${{ env.ANDROID_SDK }}/cmdline-tools/latest/bin/sdkmanager"
+
+          # Terima semua lisensi
+          yes | "$SDKMAN" --licenses 2>/dev/null || true
+
+          # Verifikasi atau install build-tools 34.0.0 jika belum ada
+          if [ ! -d "${{ env.ANDROID_SDK }}/build-tools/34.0.0" ]; then
+            echo "Installing build-tools;34.0.0 ..."
+            "$SDKMAN" "build-tools;34.0.0"
+          else
+            echo "build-tools 34.0.0 sudah ada."
+          fi
+
+          # Verifikasi NDK 27.3 tersedia
+          echo "=== NDK tersedia ==="
+          ls "${{ env.ANDROID_SDK }}/ndk/" 2>/dev/null || echo "Folder ndk kosong"
+
+          # Pastikan platforms android-33 tersedia
+          if [ ! -d "${{ env.ANDROID_SDK }}/platforms/android-33" ]; then
+            echo "Installing platforms;android-33 ..."
+            "$SDKMAN" "platforms;android-33"
+          else
+            echo "platforms android-33 sudah ada."
+          fi
+
+      # ── 6. Cache ~/.buildozer (p4a build artifacts) ─────────────────────────
+      # Cache hanya untuk p4a compilation artifacts (Python, SDL2, dll).
+      # SDK/NDK tidak di-cache karena sekarang pakai system SDK.
       - name: Cache buildozer home
         id: cache-buildozer
         uses: actions/cache@v4
@@ -60,7 +98,7 @@ jobs:
             ${{ env.CACHE_VER }}-buildozer-${{ runner.os }}-
             ${{ env.CACHE_VER }}-buildozer-
 
-      # ── 6. Cache Gradle ─────────────────────────────────────────────────────
+      # ── 7. Cache Gradle ─────────────────────────────────────────────────────
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -71,7 +109,7 @@ jobs:
           restore-keys: |
             ${{ env.CACHE_VER }}-gradle-${{ runner.os }}-
 
-      # ── 7. Cache ccache ─────────────────────────────────────────────────────
+      # ── 8. Cache ccache ─────────────────────────────────────────────────────
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -80,15 +118,15 @@ jobs:
           restore-keys: |
             ${{ env.CACHE_VER }}-ccache-${{ runner.os }}-
 
-      # ── 8. Setup ccache ────────────────────────────────────────────────────
+      # ── 9. Setup ccache ────────────────────────────────────────────────────
       - name: Configure ccache
         run: |
           ccache --max-size=2G
           ccache --zero-stats
           echo "PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
 
-      # ── 9. Install buildozer & cython ───────────────────────────────────────
-      # FIX: pin cython<3.0 — Cython 3.x tidak kompatibel dengan kivy/p4a
+      # ── 10. Install buildozer & cython ──────────────────────────────────────
+      # cython<3.0 wajib — Cython 3.x tidak kompatibel dengan kivy/p4a
       - name: Install buildozer & cython
         run: |
           pip install --upgrade pip --quiet
@@ -96,7 +134,7 @@ jobs:
           buildozer --version
           python -c "import Cython; print('Cython', Cython.__version__)"
 
-      # ── 10. Patch archs jika pakai workflow_dispatch ────────────────────────
+      # ── 11. Patch archs (workflow_dispatch) ─────────────────────────────────
       - name: Patch archs (workflow_dispatch override)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -104,22 +142,27 @@ jobs:
           sed -i "s|^android.archs =.*|android.archs = $ARCHS|" buildozer.spec
           echo "Menggunakan archs: $ARCHS"
 
-      # ── 11. BUILD APK ───────────────────────────────────────────────────────
-      # JANGAN set ANDROID_SDK_ROOT / ANDROID_NDK_HOME di sini.
-      # Buildozer kelola path NDK/SDK-nya sendiri di ~/.buildozer.
-      # Override ke path lain menyebabkan konflik dan build gagal.
+      # ── 12. BUILD APK ───────────────────────────────────────────────────────
+      # KUNCI FIX: Set ANDROIDSDK dan ANDROIDNDK ke system path.
+      # Buildozer baca kedua env var ini dan TIDAK download SDK/NDK sendiri.
+      # System SDK sudah punya build-tools, platform-tools, NDK 27.3 — siap pakai.
       - name: Build APK (debug)
         env:
+          ANDROIDSDK:  ${{ env.ANDROID_SDK }}
+          ANDROIDNDK:  ${{ env.ANDROID_NDK }}
           GRADLE_OPTS: "-Dorg.gradle.daemon=true -Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Xmx2g"
         run: |
+          echo "SDK: $ANDROIDSDK"
+          echo "NDK: $ANDROIDNDK"
+          ls "$ANDROIDSDK/build-tools/" 2>/dev/null || echo "WARNING: build-tools tidak ditemukan!"
           buildozer -v android debug 2>&1 | tee build.log
 
-      # ── 12. ccache stats ────────────────────────────────────────────────────
+      # ── 13. ccache stats ────────────────────────────────────────────────────
       - name: ccache stats
         if: always()
         run: ccache --show-stats
 
-      # ── 13. Ringkasan build ─────────────────────────────────────────────────
+      # ── 14. Ringkasan build ─────────────────────────────────────────────────
       - name: Build summary
         if: always()
         run: |
@@ -129,7 +172,7 @@ jobs:
           echo "=== 60 baris terakhir build.log ==="
           tail -60 build.log 2>/dev/null || echo "build.log tidak ditemukan"
 
-      # ── 14. Upload APK ──────────────────────────────────────────────────────
+      # ── 15. Upload APK ──────────────────────────────────────────────────────
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,7 +182,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # ── 15. Upload full build log (SELALU) ──────────────────────────────────
+      # ── 16. Upload full build log (SELALU) ──────────────────────────────────
       - name: Upload full build log
         if: always()
         uses: actions/upload-artifact@v4
