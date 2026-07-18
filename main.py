@@ -164,101 +164,114 @@ def pill_btn(text, active=False, width=None):
     return btn
 
 # ════════════════════════════════════════════════════════
-#  CUSTOM ICON WIDGETS — binding SEKALI, warna diupdate via set_color()
-#  Root fix: tidak ada re-binding saat ganti tab → tidak menumpuk di (0,0)
+#  NAV BUTTON — icon digambar langsung di canvas button
+#
+#  Root fix: Button Kivy BUKAN Layout — child widget (col, icon_row, dll)
+#  tidak pernah di-layout oleh Button, sehingga tetap di pos (0,0).
+#  Solusi: hapus semua child widget terpisah, gambar icon langsung di
+#  canvas.after button menggunakan self.x/self.y yang selalu benar
+#  karena BottomNav BoxLayout yang mengelola posisi button.
 # ════════════════════════════════════════════════════════
-class IconWidget(Widget):
-    """Base icon widget — binding pos/size hanya sekali, aman dari akkumulasi.
+class NavButton(Button):
+    """Tab button dengan icon shape + label, semuanya digambar di canvas sendiri."""
 
-    Kunci fix:  _laid_out flag.
-    set_color() dipanggil saat __init__ BottomNav (pos masih 0,0) → TIDAK
-    boleh gambar.  Gambar pertama kali hanya setelah pos event dari layout
-    benar-benar terjadi (_on_pos).  Setelah itu set_color() boleh langsung
-    gambar karena posisi sudah valid.
-    """
-    def __init__(self, color, **kw):
-        super().__init__(**kw)
-        self._color    = list(color)
-        self._laid_out = False          # belum pernah dapat pos dari layout
-        # Pisah handler pos vs size supaya flag diset sebelum redraw
-        self.bind(pos=self._on_pos, size=self._on_size)
+    _GRID_RATIOS = None          # computed lazily
+    _BAR_RATIOS  = [0.42, 0.75, 0.55, 0.95, 0.65]
+    _ZZ_XS       = [0.02, 0.27, 0.52, 0.77, 0.98]
+    _ZZ_YS       = [0.28, 0.88, 0.14, 0.74, 0.34]
 
-    # ── layout events ────────────────────────────────────
-    def _on_pos(self, *_):
-        self._laid_out = True           # layout sudah jalan, posisi valid
+    def __init__(self, icon_type, label_text, **kw):
+        super().__init__(
+            background_normal='',
+            background_color=(0, 0, 0, 0),
+            **kw)
+        self._icon_type  = icon_type
+        self._icon_color = list(C_NAV_INACTIVE)
+        self._label_text = label_text
+        self._is_active  = False
+        self.bind(pos=self._redraw, size=self._redraw)
+
+    # ── public ────────────────────────────────────────────
+    def set_active(self, active):
+        self._is_active  = active
+        self._icon_color = list(C_GOLD if active else C_NAV_INACTIVE)
         self._redraw()
 
-    def _on_size(self, *_):
-        if self._laid_out:
-            self._redraw()
-
-    # ── public API ───────────────────────────────────────
-    def set_color(self, color):
-        """Update warna tanpa buat binding baru."""
-        self._color = list(color)
-        if self._laid_out:              # jangan gambar kalau belum di-layout
-            self._redraw()
-
-    # ── internal ─────────────────────────────────────────
-    def _redraw(self):
-        if self.width < 2 or self.height < 2:
+    # ── drawing ───────────────────────────────────────────
+    def _redraw(self, *_):
+        if self.width < 4 or self.height < 4:
             return
-        self.canvas.clear()
-        self._draw()
 
-    def _draw(self):
-        pass  # dioverride subclass
+        sp   = _sp()
+        w, h = self.width, self.height
+        bx, by = self.x, self.y
 
+        icon_sz  = min(dp(22), w * 0.45)
+        lbl_h    = dp(13)
+        pad_top  = dp(8)
 
-class GridIcon(IconWidget):
-    """3×3 dot grid — tab Dashboard."""
-    def _draw(self):
-        sz  = min(self.width, self.height)
-        dot = max(2.5, sz / 7.5)
-        gap = (sz - dot * 3) / 4
-        ox  = self.x + (self.width  - sz) / 2 + gap
-        oy  = self.y + (self.height - sz) / 2 + gap
-        with self.canvas:
-            Color(*self._color)
-            for r in range(3):
-                for c in range(3):
-                    Rectangle(
-                        pos =(ox + c * (dot + gap),
-                              oy + r * (dot + gap)),
-                        size=(dot, dot))
+        # icon centre-x; icon top area
+        ix = bx + (w - icon_sz) / 2
+        iy = by + h - pad_top - icon_sz
 
+        # label centre-x; label below icon
+        lx = bx
+        ly = by + dp(6)
 
-class BarsIcon(IconWidget):
-    """Bar-chart — tab Sinyal."""
-    _ratios = [0.40, 0.72, 0.52, 0.92, 0.62]
+        c  = self._icon_color
+        tc = c
 
-    def _draw(self):
-        n     = len(self._ratios)
-        bar_w = max(2.0, self.width / (n * 2.2))
-        gap   = bar_w * 0.55
-        total = bar_w * n + gap * (n - 1)
-        ox    = self.x + (self.width - total) / 2
-        with self.canvas:
-            Color(*self._color)
-            for i, hr in enumerate(self._ratios):
-                h = self.height * hr
-                Rectangle(pos =(ox + i * (bar_w + gap), self.y + 1),
-                          size=(bar_w, h))
+        self.canvas.after.clear()
+        with self.canvas.after:
+            # ── icon shape ────────────────────────────────
+            Color(*c)
+            if self._icon_type == 'grid':
+                dot = icon_sz / 4.5
+                gap = (icon_sz - dot * 3) / 3.5
+                for r in range(3):
+                    for col in range(3):
+                        Rectangle(
+                            pos =(ix + col * (dot + gap),
+                                  iy + r  * (dot + gap)),
+                            size=(dot, dot))
 
+            elif self._icon_type == 'bars':
+                n     = len(self._BAR_RATIOS)
+                bw    = icon_sz / (n * 1.55)
+                bgap  = bw * 0.55
+                ox    = ix + (icon_sz - (bw * n + bgap * (n-1))) / 2
+                for i, hr in enumerate(self._BAR_RATIOS):
+                    bh = icon_sz * hr
+                    Rectangle(pos =(ox + i*(bw+bgap), iy),
+                              size=(bw, bh))
 
-class ZigzagIcon(IconWidget):
-    """ZigZag line — tab Fibo."""
-    _xs = [0.04, 0.26, 0.50, 0.74, 0.96]
-    _ys = [0.28, 0.84, 0.18, 0.72, 0.38]
+            elif self._icon_type == 'zigzag':
+                pts = []
+                for xr, yr in zip(self._ZZ_XS, self._ZZ_YS):
+                    pts += [ix + xr * icon_sz, iy + yr * icon_sz]
+                Line(points=pts, width=max(1.5, icon_sz * 0.07))
 
-    def _draw(self):
-        pts = []
-        for xr, yr in zip(self._xs, self._ys):
-            pts += [self.x + xr * self.width,
-                    self.y + yr * self.height]
-        with self.canvas:
-            Color(*self._color)
-            Line(points=pts, width=max(1.4, self.width * 0.055))
+            # ── label text via Label (drawn in canvas.after via texture) ──
+            # Gunakan Color + Rectangle texture approach agar benar-benar
+            # di posisi button, bukan floating child
+            Color(*tc)
+
+        # Update atau buat Label anak untuk teks (cara paling reliable di Kivy)
+        # Kita tidak gambar teks manual karena ribet; kita posisikan label
+        # secara eksplisit berdasarkan button pos.
+        if not hasattr(self, '_nav_lbl'):
+            self._nav_lbl = Label(
+                text=self._label_text,
+                font_size=8.5 * _sp(),
+                halign='center', valign='middle',
+                size_hint=(None, None))
+            self._nav_lbl.bind(texture_size=self._nav_lbl.setter('size'))
+            self.add_widget(self._nav_lbl)
+
+        self._nav_lbl.color = self._icon_color
+        self._nav_lbl.bold  = self._is_active
+        self._nav_lbl.size  = (w, lbl_h)
+        self._nav_lbl.pos   = (lx, ly)
 
 
 # ════════════════════════════════════════════════════════
@@ -278,39 +291,18 @@ class BottomNav(BoxLayout):
                   size=lambda w, v: setattr(w._top_line, 'size', (v[0], 1)))
 
         self._on_switch = on_switch
-        self._btns      = {}
+        self._nav_btns  = {}   # key → NavButton
 
-        icon_sz = dp(22)
         items = [
-            ('dashboard', GridIcon,   'Dashboard'),
-            ('sinyal',    BarsIcon,   'Sinyal'),
-            ('fibo',      ZigzagIcon, 'Fibo'),
+            ('dashboard', 'grid',    'Dashboard'),
+            ('sinyal',    'bars',    'Sinyal'),
+            ('fibo',      'zigzag',  'Fibo'),
         ]
 
-        for key, IconCls, label_text in items:
-            col = BoxLayout(orientation='vertical',
-                            padding=[0, dp(7)], spacing=dp(3))
-
-            # Buat IconWidget — binding internal, tidak pernah di-rebind
-            icon_w = IconCls(color=C_NAV_INACTIVE,
-                             size_hint=(None, None),
-                             size=(icon_sz, icon_sz))
-
-            icon_row = BoxLayout(size_hint_y=None, height=icon_sz)
-            icon_row.add_widget(Widget())
-            icon_row.add_widget(icon_w)
-            icon_row.add_widget(Widget())
-
-            txt_l = lbl(label_text, size=8.5, halign='center',
-                        color=C_NAV_INACTIVE)
-            col.add_widget(icon_row)
-            col.add_widget(txt_l)
-
-            btn = Button(background_color=(0, 0, 0, 0), background_normal='')
-            btn.add_widget(col)
+        for key, icon_type, label_text in items:
+            btn = NavButton(icon_type=icon_type, label_text=label_text)
             btn.bind(on_press=lambda b, k=key: self._tap(k))
-            # Simpan icon_w langsung — tidak perlu simpan icon_fn lagi
-            self._btns[key] = (btn, icon_w, txt_l)
+            self._nav_btns[key] = btn
             self.add_widget(btn)
 
         self._set_active('dashboard')
@@ -323,11 +315,8 @@ class BottomNav(BoxLayout):
         self._set_active(key)
 
     def _set_active(self, key):
-        for k, (btn, icon_w, txt_l) in self._btns.items():
-            c = C_GOLD if k == key else C_NAV_INACTIVE
-            icon_w.set_color(c)   # update warna saja, tanpa binding baru
-            txt_l.color = c
-            txt_l.bold  = (k == key)
+        for k, btn in self._nav_btns.items():
+            btn.set_active(k == key)
 
 # ════════════════════════════════════════════════════════
 #  TAB: DASHBOARD
