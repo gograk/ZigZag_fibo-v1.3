@@ -15,7 +15,7 @@ entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
 # Pin KEDUANYA python3 + hostpython3 ke versi sama agar tidak error versi mismatch
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,websocket-client,plyer,certifi
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.2.1,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
 orientation = portrait
