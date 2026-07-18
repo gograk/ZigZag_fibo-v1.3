@@ -17,7 +17,7 @@ jobs:
 
     env:
       # Bump ini untuk force-invalidate semua cache
-      CACHE_VER: v8
+      CACHE_VER: v9
       # System SDK path (sudah ada di GitHub runner, tidak perlu download)
       ANDROID_SDK:  /usr/local/lib/android/sdk
       ANDROID_NDK:  /usr/local/lib/android/sdk/ndk/27.3.13750724
