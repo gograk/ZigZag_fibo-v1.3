@@ -14,8 +14,9 @@ version = 6.0
 entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
-# PENTING: jangan pin versi python3 (python3==x.x.x) → p4a gagal resolve.
-# Biarkan p4a pilih versi Python yang kompatibel otomatis.
+# FIX: JANGAN tulis python3==x.x.x
+# p4a pakai hostpython3 versi terbaru (misal 3.14.2).
+# Kalau python3 di-pin ke versi lain → error "should have same version as hostpython3"
 requirements = python3,kivy==2.3.0,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
@@ -34,8 +35,6 @@ android.build_tools_version = 34.0.0
 android.accept_sdk_license  = True
 
 # ── Arsitektur Target ─────────────────────────────────────────────────────────
-# arm64-v8a saja = build 2× lebih cepat.
-# Uncomment baris berikut jika butuh dukungan HP lama (armeabi-v7a):
 android.archs = arm64-v8a
 # android.archs = arm64-v8a, armeabi-v7a
 
@@ -49,6 +48,5 @@ android.allow_backup = True
 android.gradle_dependencies =
 
 [buildozer]
-# log_level 2 = verbose, mudah debug kalau build gagal
 log_level    = 2
 warn_on_root = 1
