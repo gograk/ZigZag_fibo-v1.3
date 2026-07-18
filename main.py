@@ -118,12 +118,18 @@ def lbl(text, size=13, bold=False, color=C_TEXT,
     l = Label(text=text, font_size=size * sp, bold=bold, color=color,
                halign=halign, valign=valign,
                size_hint_y=None, markup=True, **kw)
-    l.bind(texture_size=l.setter('size'))
+    # height auto-sizes to texture; text_size tracks widget width so
+    # halign/valign always work correctly inside any container.
+    l.bind(
+        texture_size=lambda inst, ts: setattr(inst, 'height', ts[1]),
+        width=lambda inst, w:  setattr(inst, 'text_size', (w, None))
+    )
     return l
 
 def _add_bg(widget, color, radius=0):
     with widget.canvas.before:
-        Color(*color)
+        c_inst = Color(*color)
+        widget._bg_color = c_inst          # stored so callers can update rgba
         if radius:
             r = radius * _sp()
             widget._bg = RoundedRectangle(pos=widget.pos,
@@ -135,7 +141,7 @@ def _add_bg(widget, color, radius=0):
                 size=lambda w, v: setattr(w._bg, 'size', v))
 
 def h_sep(height=1, color=C_BORDER):
-    w = Widget(size_hint_y=None, height=height)
+    w = Widget(size_hint_y=None, height=max(1, height))
     _add_bg(w, color)
     return w
 
@@ -265,13 +271,17 @@ class NavButton(Button):
                 font_size=8.5 * _sp(),
                 halign='center', valign='middle',
                 size_hint=(None, None))
-            self._nav_lbl.bind(texture_size=self._nav_lbl.setter('size'))
+            # NO texture_size binding — size & pos are controlled
+            # entirely by _redraw() so they never get overridden.
             self.add_widget(self._nav_lbl)
 
-        self._nav_lbl.color = self._icon_color
-        self._nav_lbl.bold  = self._is_active
-        self._nav_lbl.size  = (w, lbl_h)
-        self._nav_lbl.pos   = (lx, ly)
+        self._nav_lbl.font_size  = 8.5 * _sp()
+        self._nav_lbl.color      = self._icon_color
+        self._nav_lbl.bold       = self._is_active
+        self._nav_lbl.size       = (w, lbl_h)
+        # text_size must match widget size for halign='center' to render correctly
+        self._nav_lbl.text_size  = (w, lbl_h)
+        self._nav_lbl.pos        = (lx, ly)
 
 
 # ════════════════════════════════════════════════════════
@@ -547,12 +557,12 @@ class SinyalTab(BoxLayout):
     def _set_filter(self, flt):
         self._active_filter = flt
         for f, btn in self._filter_btns.items():
-            btn.canvas.before.clear()
-            _add_bg(btn, C_GOLD if f == flt else (0.14, 0.16, 0.23, 1),
-                    radius=12)
-            btn.color = ((0.06, 0.06, 0.10, 1) if f == flt
-                         else C_TEXT_2)
-            btn.bold = (f == flt)
+            active = (f == flt)
+            # Update Color instruction in-place — no canvas clear, no new bindings
+            if hasattr(btn, '_bg_color'):
+                btn._bg_color.rgba = C_GOLD if active else (0.14, 0.16, 0.23, 1)
+            btn.color = (0.06, 0.06, 0.10, 1) if active else C_TEXT_2
+            btn.bold  = active
         self.refresh()
 
     def refresh(self):
@@ -579,8 +589,10 @@ class SinyalTab(BoxLayout):
 
         for sig, st in filtered[:40]:
             col_bg, st_text = _STATUS_CFG.get(st, ((0.14, 0.15, 0.20, 1), st))
+            has_pnl = (st == "OPEN" and price > 0)
+            card_h  = dp(112) if has_pnl else dp(94)
             card = BoxLayout(orientation='vertical',
-                             size_hint_y=None, height=dp(94),
+                             size_hint_y=None, height=card_h,
                              padding=[dp(12), dp(8)], spacing=dp(3))
             _add_bg(card, C_SURFACE, radius=10)
 
@@ -679,11 +691,11 @@ class FiboTab(BoxLayout):
     def _set_tf(self, tf):
         self._active_tf = tf
         for t, btn in self._tf_btns.items():
-            btn.canvas.before.clear()
-            _add_bg(btn, C_GOLD if t == tf else (0.14, 0.16, 0.23, 1),
-                    radius=12)
-            btn.color = ((0.06, 0.06, 0.10, 1) if t == tf
-                         else C_TEXT_2)
+            active = (t == tf)
+            # Update Color instruction in-place — no canvas clear, no new bindings
+            if hasattr(btn, '_bg_color'):
+                btn._bg_color.rgba = C_GOLD if active else (0.14, 0.16, 0.23, 1)
+            btn.color = (0.06, 0.06, 0.10, 1) if active else C_TEXT_2
         self.refresh()
 
     def refresh(self):
