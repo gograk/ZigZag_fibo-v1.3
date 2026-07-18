@@ -14,8 +14,7 @@ version = 6.0
 entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
-# FIX: pin KEDUANYA python3 + hostpython3 ke versi yang sama
-# Python 3.11.9 dipilih karena pyjnius 1.7.0 punya binary wheel Android untuk 3.11
+# Pin KEDUANYA python3 + hostpython3 ke versi sama agar tidak error versi mismatch
 requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
@@ -28,12 +27,16 @@ android.permissions = INTERNET,FOREGROUND_SERVICE,RECEIVE_BOOT_COMPLETED,VIBRATE
 # ── Android SDK / NDK ─────────────────────────────────────────────────────────
 android.api             = 33
 android.minapi          = 21
-# FIX: pakai NDK 27.3 yang sudah ada di GitHub runner (tidak perlu download)
-# NDK path di-set via env var ANDROIDNDK di workflow
-android.ndk             = 27.3.13750724
 android.ndk_api         = 21
 android.build_tools_version = 34.0.0
 android.accept_sdk_license  = True
+
+# FIX: Tunjuk langsung ke system SDK/NDK yang sudah ada di GitHub runner.
+# Ini dibaca buildozer SEBELUM mencoba download — tidak perlu env var.
+# Format android.ndk harus nama release (misal 27c), BUKAN package version (27.3.x).
+android.ndk     = 27c
+android.sdk_path = /usr/local/lib/android/sdk
+android.ndk_path = /usr/local/lib/android/sdk/ndk/27.3.13750724
 
 # ── Arsitektur Target ─────────────────────────────────────────────────────────
 android.archs = arm64-v8a
