@@ -14,8 +14,9 @@ version = 6.0
 entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
-# Gunakan versi yang pasti ada di PyPI; hindari git/editable packages.
-requirements = python3==3.11.9,kivy==2.3.0,requests,websocket-client,plyer,certifi
+# PENTING: jangan pin versi python3 (python3==x.x.x) → p4a gagal resolve.
+# Biarkan p4a pilih versi Python yang kompatibel otomatis.
+requirements = python3,kivy==2.3.0,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
 orientation = portrait
@@ -24,7 +25,7 @@ fullscreen   = 0
 # ── Android Permission ────────────────────────────────────────────────────────
 android.permissions = INTERNET,FOREGROUND_SERVICE,RECEIVE_BOOT_COMPLETED,VIBRATE,POST_NOTIFICATIONS
 
-# ── Android SDK / NDK (harus cocok dengan versi yang diinstall di CI) ─────────
+# ── Android SDK / NDK ─────────────────────────────────────────────────────────
 android.api             = 33
 android.minapi          = 21
 android.ndk             = 25b
@@ -34,27 +35,20 @@ android.accept_sdk_license  = True
 
 # ── Arsitektur Target ─────────────────────────────────────────────────────────
 # arm64-v8a saja = build 2× lebih cepat.
-# Hapus tanda # pada baris berikut jika butuh armeabi-v7a (HP lama):
+# Uncomment baris berikut jika butuh dukungan HP lama (armeabi-v7a):
 android.archs = arm64-v8a
 # android.archs = arm64-v8a, armeabi-v7a
 
-# ── Optimasi Build ────────────────────────────────────────────────────────────
-# ccache mempercepat kompilasi C/C++ saat rebuild (hit cache NDK)
-android.add_compile_options = -Wno-error=deprecated-declarations
-# Nonaktifkan strip debug agar build debug lebih cepat
-android.release_artifact = apk
-
 # ── Ikon ──────────────────────────────────────────────────────────────────────
 icon.filename = %(source.dir)s/icon.png
-# presplash.filename = %(source.dir)s/presplash.png
 
 # ── Backup ────────────────────────────────────────────────────────────────────
 android.allow_backup = True
 
 # ── Gradle extra ─────────────────────────────────────────────────────────────
-# Parallel Gradle + Daemon = cepat pada build ke-2 dst (warmcache)
 android.gradle_dependencies =
 
 [buildozer]
+# log_level 2 = verbose, mudah debug kalau build gagal
 log_level    = 2
 warn_on_root = 1
