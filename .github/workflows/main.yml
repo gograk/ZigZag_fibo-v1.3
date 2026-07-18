@@ -17,7 +17,7 @@ jobs:
 
     env:
       # Bump ini untuk force-invalidate semua cache
-      CACHE_VER: v9
+      CACHE_VER: v10
       # System SDK path (sudah ada di GitHub runner, tidak perlu download)
       ANDROID_SDK:  /usr/local/lib/android/sdk
       ANDROID_NDK:  /usr/local/lib/android/sdk/ndk/27.3.13750724
@@ -52,12 +52,20 @@ jobs:
             build-essential ccache lld \
             --no-install-recommends
 
-      # ── 5. Siapkan system SDK (build-tools + lisensi) ───────────────────────
-      # FIX: Buildozer kelola SDK-nya sendiri di ~/.buildozer, tapi
-      # sdkmanager-nya gagal install build-tools (silent fail).
-      # Solusi: paksa buildozer pakai SYSTEM SDK via env var ANDROIDSDK + ANDROIDNDK.
-      # System SDK sudah ada di /usr/local/lib/android/sdk dengan build-tools,
-      # platform-tools, dan NDK 27.3 (tidak perlu download apapun).
+      # ── 5a. Symlink sdkmanager ke path lama ────────────────────────────────
+      # Buildozer mencari sdkmanager di <sdk>/tools/bin/sdkmanager (path lama),
+      # tapi SDK modern menaruhnya di cmdline-tools/latest/bin/sdkmanager.
+      # Buat symlink agar buildozer menemukannya.
+      - name: Symlink sdkmanager to legacy path
+        run: |
+          mkdir -p "${{ env.ANDROID_SDK }}/tools/bin"
+          ln -sf "${{ env.ANDROID_SDK }}/cmdline-tools/latest/bin/sdkmanager" \
+                 "${{ env.ANDROID_SDK }}/tools/bin/sdkmanager"
+          ln -sf "${{ env.ANDROID_SDK }}/cmdline-tools/latest/bin/avdmanager" \
+                 "${{ env.ANDROID_SDK }}/tools/bin/avdmanager" 2>/dev/null || true
+          echo "Symlink OK: $(ls -la ${{ env.ANDROID_SDK }}/tools/bin/)"
+
+      # ── 5b. Siapkan system SDK (build-tools + lisensi) ──────────────────────
       - name: Prepare system SDK (accept licenses + verify build-tools)
         run: |
           SDKMAN="${{ env.ANDROID_SDK }}/cmdline-tools/latest/bin/sdkmanager"
