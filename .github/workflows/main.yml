@@ -17,7 +17,7 @@ jobs:
 
     env:
       # Bump ini setiap mau force-invalidate semua cache
-      CACHE_VER: v6
+      CACHE_VER: v7
 
     steps:
       # ── 1. Checkout ─────────────────────────────────────────────────────────
