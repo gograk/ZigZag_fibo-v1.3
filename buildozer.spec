@@ -14,11 +14,8 @@ version = 6.0
 entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
-# FIX v3:
-#   - Harus pin KEDUANYA: python3==3.11.9 DAN hostpython3==3.11.9
-#   - Kalau hanya python3 yang di-pin → error "3.11.9 != 3.14.2" (p4a default hostpython3 ke 3.14.2)
-#   - Kalau tidak di-pin sama sekali → p4a pakai Python 3.14.2, pyjnius tidak ada wheel-nya
-#   - Python 3.11.9 dipilih karena pyjnius 1.7.0 punya binary wheel Android untuk Python 3.11
+# FIX: pin KEDUANYA python3 + hostpython3 ke versi yang sama
+# Python 3.11.9 dipilih karena pyjnius 1.7.0 punya binary wheel Android untuk 3.11
 requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
@@ -31,7 +28,9 @@ android.permissions = INTERNET,FOREGROUND_SERVICE,RECEIVE_BOOT_COMPLETED,VIBRATE
 # ── Android SDK / NDK ─────────────────────────────────────────────────────────
 android.api             = 33
 android.minapi          = 21
-android.ndk             = 25b
+# FIX: pakai NDK 27.3 yang sudah ada di GitHub runner (tidak perlu download)
+# NDK path di-set via env var ANDROIDNDK di workflow
+android.ndk             = 27.3.13750724
 android.ndk_api         = 21
 android.build_tools_version = 34.0.0
 android.accept_sdk_license  = True
