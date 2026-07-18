@@ -2,9 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ZIGZAG_FIBO BY GOGRAK — Android APK UI (Kivy)
-Versi v6: responsif penuh (auto-scale ke semua layar Android).
-Semua logika sinyal ada di bot_core.py (tidak diubah).
-Icon murni dari View/Shape — tanpa font, dijamin tampil semua Android.
+Versi v6-fix9: bug icon fixed + premium redesign + full responsive.
 """
 
 import threading
@@ -24,9 +22,11 @@ from kivy.uix.button     import Button
 from kivy.uix.widget     import Widget
 from kivy.clock          import Clock
 from kivy.core.window    import Window
-from kivy.graphics       import Color, Rectangle, RoundedRectangle, Line, Ellipse
+from kivy.graphics       import (Color, Rectangle, RoundedRectangle,
+                                  Line, Ellipse, StencilPush, StencilUse,
+                                  StencilPop, StencilUnUse)
 
-Window.clearcolor = (0.04, 0.04, 0.07, 1)
+Window.clearcolor = (0.04, 0.04, 0.08, 1)
 
 import bot_core as bot
 
@@ -36,8 +36,12 @@ APP_TITLE = "ZIGZAG_FIBO BY GOGRAK"
 #  RESPONSIVE SCALE  —  SP = scale-factor (1.0 @ 400 px lebar)
 # ════════════════════════════════════════════════════════
 def _sp():
-    """Hitung scale factor berdasarkan lebar layar aktual."""
-    return max(0.72, min(1.60, Window.width / 400.0))
+    """Scale factor berdasarkan lebar layar aktual (clamp 0.72–1.65)."""
+    return max(0.72, min(1.65, Window.width / 400.0))
+
+def dp(val):
+    """Convert design-px ke screen-px (scale-aware)."""
+    return int(val * _sp())
 
 # ── Notification ─────────────────────────────────────────
 def _send_android_notif(title, body):
@@ -88,9 +92,27 @@ def _refresh_statuses():
             _sig_status.setdefault(key, "PENDING")
 
 # ════════════════════════════════════════════════════════
+#  COLOR PALETTE — premium dark theme
+# ════════════════════════════════════════════════════════
+C_BG          = (0.04, 0.04, 0.08, 1)       # app background
+C_SURFACE     = (0.09, 0.10, 0.16, 1)       # card / panel
+C_SURFACE_ALT = (0.11, 0.13, 0.19, 1)       # alt row
+C_HEADER      = (0.06, 0.07, 0.12, 1)       # header/nav bg
+C_BORDER      = (0.16, 0.18, 0.26, 1)       # subtle border
+C_GOLD        = (1.00, 0.80, 0.20, 1)       # accent/active
+C_GOLD_DIM    = (0.55, 0.44, 0.11, 1)       # dim gold
+C_TEXT        = (0.92, 0.93, 0.95, 1)       # primary text
+C_TEXT_2      = (0.58, 0.60, 0.68, 1)       # secondary text
+C_TEXT_3      = (0.35, 0.37, 0.46, 1)       # tertiary / muted
+C_GREEN       = (0.18, 0.90, 0.52, 1)
+C_RED         = (0.95, 0.32, 0.32, 1)
+C_CYAN        = (0.22, 0.88, 0.90, 1)
+C_NAV_INACTIVE= (0.35, 0.37, 0.46, 1)
+
+# ════════════════════════════════════════════════════════
 #  WIDGET HELPERS
 # ════════════════════════════════════════════════════════
-def lbl(text, size=13, bold=False, color=(1, 1, 1, 1),
+def lbl(text, size=13, bold=False, color=C_TEXT,
         halign='left', valign='middle', **kw):
     sp = _sp()
     l = Label(text=text, font_size=size * sp, bold=bold, color=color,
@@ -103,102 +125,122 @@ def _add_bg(widget, color, radius=0):
     with widget.canvas.before:
         Color(*color)
         if radius:
+            r = radius * _sp()
             widget._bg = RoundedRectangle(pos=widget.pos,
                                            size=widget.size,
-                                           radius=[radius * _sp()])
+                                           radius=[r, r, r, r])
         else:
             widget._bg = Rectangle(pos=widget.pos, size=widget.size)
     widget.bind(pos=lambda w, v: setattr(w._bg, 'pos', v),
                 size=lambda w, v: setattr(w._bg, 'size', v))
 
-def h_sep(height=1, color=(0.14, 0.16, 0.21, 1)):
+def h_sep(height=1, color=C_BORDER):
     w = Widget(size_hint_y=None, height=height)
     _add_bg(w, color)
     return w
 
 def section_title(text):
-    sp = _sp()
-    box = BoxLayout(size_hint_y=None, height=int(28 * sp), padding=[0, 4])
-    l = Label(text=f"[b]{text}[/b]", font_size=11 * sp,
-               color=(0.55, 0.55, 0.55, 1),
-               markup=True, halign='left', valign='middle', size_hint_y=None)
+    box = BoxLayout(size_hint_y=None, height=dp(32),
+                    padding=[dp(2), dp(6)])
+    l = Label(text=f"[b]{text}[/b]", font_size=10 * _sp(),
+               color=C_TEXT_3,
+               markup=True, halign='left', valign='middle',
+               size_hint_y=None)
     l.bind(texture_size=l.setter('size'))
     box.add_widget(l)
     return box
 
 def pill_btn(text, active=False, width=None):
-    sp = _sp()
-    w  = int((width or 60) * sp)
+    w   = dp(width or 60)
     btn = Button(text=text,
                  size_hint=(None, None),
-                 size=(w, int(30 * sp)),
-                 font_size=int(11 * sp),
+                 size=(w, dp(28)),
+                 font_size=int(10 * _sp()),
                  bold=active,
                  background_normal='',
                  background_color=(0, 0, 0, 0))
-    gold = (1, 0.78, 0, 1)
-    dim  = (0.18, 0.20, 0.26, 1)
-    _add_bg(btn, gold if active else dim, radius=14)
-    btn.color = (0.05, 0.05, 0.08, 1) if active else (0.7, 0.7, 0.7, 1)
+    _add_bg(btn, C_GOLD if active else (0.14, 0.16, 0.23, 1), radius=12)
+    btn.color = (0.06, 0.06, 0.10, 1) if active else C_TEXT_2
     return btn
 
 # ════════════════════════════════════════════════════════
-#  CUSTOM ICONS (murni Shape — tidak butuh font)
+#  CUSTOM ICONS — FIX: draw HANYA via bind (tidak immediate call)
+#  supaya tidak muncul di posisi 0,0 sebelum layout selesai
 # ════════════════════════════════════════════════════════
 def _icon_grid(parent, color):
-    """3×3 grid icon untuk tab Dashboard."""
-    with parent.canvas:
-        Color(*color)
-        for r in range(3):
-            for c in range(3):
-                Rectangle(pos=(parent.x + c*7 + 3, parent.y + r*7 + 3),
-                          size=(5, 5))
+    """3×3 grid — tab Dashboard. Bug fix: no immediate draw."""
     def _redraw(w, *_):
         w.canvas.clear()
+        sz  = min(w.width, w.height)
+        dot = max(3, sz / 7)
+        gap = (sz - dot * 3) / 4
+        ox  = w.x + gap
+        oy  = w.y + gap
         with w.canvas:
             Color(*color)
-            for r2 in range(3):
-                for c2 in range(3):
-                    Rectangle(pos=(w.x + c2*7 + 3, w.y + r2*7 + 3),
-                              size=(5, 5))
+            for r in range(3):
+                for c in range(3):
+                    Rectangle(
+                        pos =(ox + c * (dot + gap), oy + r * (dot + gap)),
+                        size=(dot, dot))
     parent.bind(pos=_redraw, size=_redraw)
+    # Defer first draw ke frame berikutnya supaya layout sudah selesai
+    Clock.schedule_once(lambda *_: _redraw(parent), 0)
 
 def _icon_bars(parent, color):
-    """Bar-chart icon untuk tab Sinyal."""
-    heights = [8, 14, 10, 18, 12]
+    """Bar-chart — tab Sinyal. Bug fix: no immediate draw at (0,0)."""
+    heights_ratio = [0.40, 0.70, 0.50, 0.90, 0.60]
     def _draw(w, *_):
         w.canvas.clear()
+        n    = len(heights_ratio)
+        bar_w = max(2, w.width  / (n * 2))
+        gap   = bar_w * 0.6
+        total = bar_w * n + gap * (n - 1)
+        ox    = w.x + (w.width - total) / 2
         with w.canvas:
             Color(*color)
-            for i, h in enumerate(heights):
-                Rectangle(pos=(w.x + i * 6 + 2, w.y + 2), size=(4, h))
+            for i, hr in enumerate(heights_ratio):
+                h = w.height * hr
+                Rectangle(pos=(ox + i * (bar_w + gap), w.y + 1),
+                          size=(bar_w, h))
     parent.bind(pos=_draw, size=_draw)
-    _draw(parent)
+    Clock.schedule_once(lambda *_: _draw(parent), 0)
 
 def _icon_zigzag(parent, color):
-    """ZigZag line icon untuk tab Fibo."""
+    """ZigZag line — tab Fibo. Bug fix: no immediate draw at (0,0)."""
     def _draw(w, *_):
         w.canvas.clear()
+        pw, ph = w.width, w.height
+        # 5-point zigzag that fills the icon area proportionally
+        xs = [0.05, 0.25, 0.50, 0.75, 0.95]
+        ys = [0.30,  0.85, 0.20, 0.70, 0.40]
+        pts = []
+        for xr, yr in zip(xs, ys):
+            pts += [w.x + xr * pw, w.y + yr * ph]
         with w.canvas:
             Color(*color)
-            pts = [w.x+2, w.y+6, w.x+8, w.y+18, w.x+14, w.y+4,
-                   w.x+20, w.y+16, w.x+26, w.y+8]
-            Line(points=pts, width=2)
+            Line(points=pts, width=max(1.4, pw * 0.05))
     parent.bind(pos=_draw, size=_draw)
-    _draw(parent)
+    Clock.schedule_once(lambda *_: _draw(parent), 0)
 
 # ════════════════════════════════════════════════════════
-#  BOTTOM NAV
+#  BOTTOM NAV — premium styling
 # ════════════════════════════════════════════════════════
 class BottomNav(BoxLayout):
     def __init__(self, on_switch, **kw):
-        sp = _sp()
         super().__init__(orientation='horizontal',
-                         size_hint_y=None, height=int(62 * sp), **kw)
-        _add_bg(self, (0.07, 0.08, 0.12, 1))
+                         size_hint_y=None, height=dp(64), **kw)
+        _add_bg(self, C_HEADER)
+
+        # top accent line
+        with self.canvas.before:
+            Color(*C_BORDER)
+            self._top_line = Rectangle(pos=self.pos, size=(self.width, 1))
+        self.bind(pos =lambda w, v: setattr(w._top_line, 'pos',  v),
+                  size=lambda w, v: setattr(w._top_line, 'size', (v[0], 1)))
+
         self._on_switch = on_switch
         self._btns      = {}
-        self._icons     = {}
 
         items = [
             ('dashboard', _icon_grid,   'Dashboard'),
@@ -207,26 +249,27 @@ class BottomNav(BoxLayout):
         ]
 
         for key, icon_fn, label_text in items:
-            col = BoxLayout(orientation='vertical', padding=[0, int(6*sp)])
+            col = BoxLayout(orientation='vertical',
+                            padding=[0, dp(7)], spacing=dp(3))
 
-            icon_w = Widget(size_hint=(None, None),
-                            size=(int(28*sp), int(28*sp)))
-            icon_fn(icon_w, (0.4, 0.4, 0.4, 1))
+            icon_sz  = dp(22)
+            icon_w   = Widget(size_hint=(None, None), size=(icon_sz, icon_sz))
+            icon_fn(icon_w, C_NAV_INACTIVE)
 
-            icon_row = BoxLayout(size_hint_y=None, height=int(28*sp))
+            icon_row = BoxLayout(size_hint_y=None, height=icon_sz)
             icon_row.add_widget(Widget())
             icon_row.add_widget(icon_w)
             icon_row.add_widget(Widget())
 
-            txt_l = lbl(label_text, size=9, halign='center',
-                        color=(0.45, 0.45, 0.45, 1))
+            txt_l = lbl(label_text, size=8.5, halign='center',
+                        color=C_NAV_INACTIVE)
             col.add_widget(icon_row)
             col.add_widget(txt_l)
 
             btn = Button(background_color=(0,0,0,0), background_normal='')
             btn.add_widget(col)
             btn.bind(on_press=lambda b, k=key: self._tap(k))
-            self._btns[key]  = (btn, icon_w, txt_l, icon_fn)
+            self._btns[key] = (btn, icon_w, txt_l, icon_fn)
             self.add_widget(btn)
 
         self._set_active('dashboard')
@@ -239,12 +282,11 @@ class BottomNav(BoxLayout):
         self._set_active(key)
 
     def _set_active(self, key):
-        gold = (1, 0.78, 0, 1)
-        dim  = (0.38, 0.38, 0.38, 1)
         for k, (btn, icon_w, txt_l, icon_fn) in self._btns.items():
-            c = gold if k == key else dim
+            c = C_GOLD if k == key else C_NAV_INACTIVE
             icon_fn(icon_w, c)
             txt_l.color = c
+            txt_l.bold  = (k == key)
 
 # ════════════════════════════════════════════════════════
 #  TAB: DASHBOARD
@@ -252,44 +294,48 @@ class BottomNav(BoxLayout):
 class DashTab(ScrollView):
     def __init__(self, **kw):
         super().__init__(size_hint=(1, 1), **kw)
-        sp   = _sp()
         root = BoxLayout(orientation='vertical',
-                         padding=[int(14*sp), int(10*sp)],
-                         spacing=int(10*sp), size_hint_y=None)
+                         padding=[dp(14), dp(12)],
+                         spacing=dp(10), size_hint_y=None)
         root.bind(minimum_height=root.setter('height'))
 
         # ── Price Card ────────────────────────────────
-        card_h = int(140 * sp)
-        price_box = BoxLayout(orientation='vertical', spacing=int(4*sp),
-                               size_hint_y=None, height=card_h,
-                               padding=[0, int(10*sp)])
-        _add_bg(price_box, (0.09, 0.11, 0.16, 1), radius=10)
+        price_box = BoxLayout(orientation='vertical', spacing=dp(3),
+                               size_hint_y=None, height=dp(148),
+                               padding=[dp(16), dp(12)])
+        _add_bg(price_box, C_SURFACE, radius=12)
 
-        self.ws_lbl    = lbl("HARGA LIVE", size=11,
-                              color=(0.25, 0.85, 0.85, 1), halign='center')
-        self.sym_lbl   = lbl("XAUUSD", size=12,
-                              color=(0.55, 0.55, 0.55, 1), halign='center')
-        self.price_lbl = lbl("—", size=34, bold=True,
-                              color=(1, 1, 1, 1), halign='center')
-        self.chg_lbl   = lbl("", size=13, halign='center')
+        # LIVE indicator row
+        live_row = BoxLayout(size_hint_y=None, height=dp(20))
+        self.ws_lbl = lbl("● LIVE", size=9.5, color=C_GREEN, halign='center',
+                           bold=True)
+        live_row.add_widget(self.ws_lbl)
 
-        for w in (self.ws_lbl, self.sym_lbl, self.price_lbl, self.chg_lbl):
-            price_box.add_widget(w)
+        self.sym_lbl   = lbl("XAUUSD", size=11,
+                              color=C_TEXT_3, halign='center')
+        self.price_lbl = lbl("—", size=36, bold=True,
+                              color=C_TEXT, halign='center')
+        self.chg_lbl   = lbl("", size=12.5, halign='center')
+
+        price_box.add_widget(live_row)
+        price_box.add_widget(self.sym_lbl)
+        price_box.add_widget(self.price_lbl)
+        price_box.add_widget(self.chg_lbl)
         root.add_widget(price_box)
 
         # ── RSI ───────────────────────────────────────
         root.add_widget(section_title("RSI-14 per Timeframe"))
-        rsi_box = BoxLayout(size_hint_y=None, height=int(58*sp),
-                             padding=[int(6*sp), int(4*sp)], spacing=2)
-        _add_bg(rsi_box, (0.09, 0.11, 0.16, 1), radius=10)
+        rsi_box = BoxLayout(size_hint_y=None, height=dp(60),
+                             padding=[dp(8), dp(6)], spacing=2)
+        _add_bg(rsi_box, C_SURFACE, radius=12)
 
         self.rsi_cells = {}
         for tf in bot.TIMEFRAMES:
-            col = BoxLayout(orientation='vertical', spacing=2)
-            name_l = lbl(bot.TF_LABEL[tf], size=10,
-                          color=(0.5, 0.5, 0.5, 1), halign='center')
-            val_l  = lbl("—", size=14, bold=True,
-                          halign='center', color=(1, 1, 1, 1))
+            col = BoxLayout(orientation='vertical', spacing=dp(2))
+            name_l = lbl(bot.TF_LABEL[tf], size=9,
+                          color=C_TEXT_3, halign='center')
+            val_l  = lbl("—", size=13.5, bold=True,
+                          halign='center', color=C_TEXT)
             col.add_widget(name_l)
             col.add_widget(val_l)
             self.rsi_cells[tf] = val_l
@@ -298,44 +344,53 @@ class DashTab(ScrollView):
 
         # ── Stats ─────────────────────────────────────
         root.add_widget(section_title("Statistik Sesi"))
-        stats_grid = BoxLayout(orientation='vertical',
-                                size_hint_y=None, spacing=1)
-        stats_grid.bind(minimum_height=stats_grid.setter('height'))
-        _add_bg(stats_grid, (0.09, 0.11, 0.16, 1), radius=10)
+        stats_outer = BoxLayout(orientation='vertical',
+                                 size_hint_y=None, spacing=0,
+                                 padding=[0, 0])
+        stats_outer.bind(minimum_height=stats_outer.setter('height'))
+        _add_bg(stats_outer, C_SURFACE, radius=12)
 
         self.stat_labels = {}
-        for key, title in [("signal", "Total Sinyal"), ("win", "Win (TP1)"),
-                            ("wr",    "Win Rate"),     ("pnl", "PnL Harian"),
-                            ("dd",    "Max Drawdown"), ("uptime", "Uptime")]:
-            row = BoxLayout(size_hint_y=None, height=int(34*sp),
-                             padding=[int(12*sp), 0])
-            _add_bg(row, (0.09, 0.11, 0.16, 1))
-            lbl_t = lbl(title, size=12, color=(0.6, 0.6, 0.6, 1))
-            lbl_v = lbl("—",   size=13, bold=True, color=(1, 1, 1, 1),
+        stat_rows = [
+            ("signal", "Total Sinyal"),
+            ("win",    "Win (TP1)"),
+            ("wr",     "Win Rate"),
+            ("pnl",    "PnL Harian"),
+            ("dd",     "Max Drawdown"),
+            ("uptime", "Uptime"),
+        ]
+        for i, (key, title) in enumerate(stat_rows):
+            row_bg = C_SURFACE_ALT if i % 2 == 0 else C_SURFACE
+            row = BoxLayout(size_hint_y=None, height=dp(36),
+                             padding=[dp(14), 0])
+            _add_bg(row, row_bg)
+            lbl_t = lbl(title, size=11.5, color=C_TEXT_2)
+            lbl_v = lbl("—",   size=12.5, bold=True, color=C_TEXT,
                          halign='right')
             row.add_widget(lbl_t)
             row.add_widget(lbl_v)
             self.stat_labels[key] = lbl_v
-            stats_grid.add_widget(row)
-            stats_grid.add_widget(h_sep())
-        root.add_widget(stats_grid)
+            stats_outer.add_widget(row)
+            if i < len(stat_rows) - 1:
+                stats_outer.add_widget(h_sep())
+        root.add_widget(stats_outer)
 
         # ── Activity Log ──────────────────────────────
         root.add_widget(section_title("Log Aktivitas"))
-        log_box = BoxLayout(orientation='vertical',
-                             size_hint_y=None, spacing=0,
-                             padding=[int(12*sp), int(6*sp)])
-        log_box.bind(minimum_height=log_box.setter('height'))
-        _add_bg(log_box, (0.09, 0.11, 0.16, 1), radius=10)
-        self.log_box = log_box
-        root.add_widget(log_box)
+        log_outer = BoxLayout(orientation='vertical',
+                               size_hint_y=None, spacing=0,
+                               padding=[dp(12), dp(8)])
+        log_outer.bind(minimum_height=log_outer.setter('height'))
+        _add_bg(log_outer, C_SURFACE, radius=12)
+        self.log_box = log_outer
+        root.add_widget(log_outer)
 
         # ── WS status bar ─────────────────────────────
-        self.ws_bar = BoxLayout(size_hint_y=None, height=int(28*sp),
-                                 padding=[int(12*sp), 0])
-        _add_bg(self.ws_bar, (0.07, 0.08, 0.12, 1))
-        self.ws_status = lbl("WS: --", size=10,
-                              color=(0.4, 0.4, 0.4, 1))
+        self.ws_bar = BoxLayout(size_hint_y=None, height=dp(30),
+                                 padding=[dp(14), 0])
+        _add_bg(self.ws_bar, C_HEADER)
+        self.ws_status = lbl("WS: --", size=9.5, color=C_TEXT_3,
+                              halign='center')
         self.ws_bar.add_widget(self.ws_status)
         root.add_widget(self.ws_bar)
 
@@ -357,38 +412,38 @@ class DashTab(ScrollView):
         if price > 0:
             chg  = price - prev
             sign = "+" if chg >= 0 else ""
-            col  = (0.2, 0.9, 0.4, 1) if chg >= 0 else (0.9, 0.3, 0.3, 1)
+            col  = C_GREEN if chg >= 0 else C_RED
             self.price_lbl.text  = f"{price:.3f}"
             self.chg_lbl.text    = f"{sign}{chg:.3f}"
             self.chg_lbl.color   = col
 
         # WS indicator
         if ws_ok:
-            self.ws_lbl.text  = "LIVE  •"
-            self.ws_lbl.color = (0.2, 0.9, 0.5, 1)
+            self.ws_lbl.text  = "● LIVE"
+            self.ws_lbl.color = C_GREEN
         else:
-            self.ws_lbl.text  = "OFFLINE  ○"
-            self.ws_lbl.color = (0.9, 0.3, 0.3, 1)
+            self.ws_lbl.text  = "○ OFFLINE"
+            self.ws_lbl.color = C_RED
 
         # RSI cells
         for tf in bot.TIMEFRAMES:
-            r   = rsi_d.get(tf, 0)
+            r     = rsi_d.get(tf, 0)
             lbl_w = self.rsi_cells[tf]
             if r == 0:
                 lbl_w.text  = "—"
-                lbl_w.color = (0.5, 0.5, 0.5, 1)
+                lbl_w.color = C_TEXT_3
             else:
                 lbl_w.text = f"{r:.0f}"
                 if r >= 70:
-                    lbl_w.color = (0.95, 0.35, 0.35, 1)
+                    lbl_w.color = C_RED
                 elif r <= 30:
-                    lbl_w.color = (0.3, 0.85, 0.45, 1)
+                    lbl_w.color = C_GREEN
                 else:
-                    lbl_w.color = (0.85, 0.85, 0.85, 1)
+                    lbl_w.color = C_TEXT
 
         # Stats
-        wr  = f"{round(wins/total*100)}%" if total else "—"
-        up  = datetime.now(timezone.utc) - start
+        wr     = f"{round(wins/total*100)}%" if total else "—"
+        up     = datetime.now(timezone.utc) - start
         up_str = str(up).split('.')[0]
         pnl_str = (f"+{dpnl:.2f}" if dpnl >= 0 else f"{dpnl:.2f}")
         dd_str  = f"{dd:.2f}"
@@ -396,8 +451,7 @@ class DashTab(ScrollView):
         self.stat_labels["win"].text    = str(wins)
         self.stat_labels["wr"].text     = wr
         self.stat_labels["pnl"].text    = pnl_str
-        self.stat_labels["pnl"].color   = ((0.2,0.9,0.4,1) if dpnl>=0
-                                           else (0.9,0.3,0.3,1))
+        self.stat_labels["pnl"].color   = C_GREEN if dpnl >= 0 else C_RED
         self.stat_labels["dd"].text     = dd_str
         self.stat_labels["uptime"].text = up_str
 
@@ -406,83 +460,77 @@ class DashTab(ScrollView):
         self.log_box.clear_widgets()
         if not logs:
             self.log_box.add_widget(
-                lbl("Belum ada aktivitas.", size=11,
-                    color=(0.4, 0.4, 0.4, 1)))
+                lbl("Belum ada aktivitas.", size=10.5,
+                    color=C_TEXT_3, halign='center'))
         for line in reversed(logs[-6:]):
             self.log_box.add_widget(
-                lbl(line, size=10, color=(0.55, 0.65, 0.75, 1)))
+                lbl(line, size=9.5, color=(0.50, 0.65, 0.80, 1)))
 
         # WS status bar
         ws_txt = "WebSocket: Connected" if ws_ok else "WebSocket: Offline (REST fallback)"
         self.ws_status.text  = ws_txt
-        self.ws_status.color = ((0.3,0.9,0.5,1) if ws_ok
-                                else (0.9,0.5,0.3,1))
+        self.ws_status.color = C_GREEN if ws_ok else (0.90, 0.55, 0.30, 1)
 
 # ════════════════════════════════════════════════════════
 #  TAB: SINYAL
 # ════════════════════════════════════════════════════════
 _STATUS_CFG = {
-    "WIN":     ((0.15, 0.65, 0.30, 1), "WIN"),
-    "LOSS":    ((0.75, 0.15, 0.15, 1), "LOSS"),
-    "OPEN":    ((0.75, 0.45, 0.05, 1), "OPEN"),
-    "PENDING": ((0.18, 0.20, 0.28, 1), "PENDING"),
+    "WIN":     ((0.18, 0.78, 0.38, 1), "WIN"),
+    "LOSS":    ((0.88, 0.25, 0.25, 1), "LOSS"),
+    "OPEN":    ((0.90, 0.58, 0.08, 1), "OPEN"),
+    "PENDING": ((0.40, 0.42, 0.52, 1), "PENDING"),
 }
 
 class SinyalTab(BoxLayout):
     def __init__(self, **kw):
-        sp = _sp()
         super().__init__(orientation='vertical',
                          padding=[0, 0], spacing=0, **kw)
 
-        # Filter row
-        filter_row = BoxLayout(size_hint_y=None, height=int(48*sp),
-                                padding=[int(10*sp), int(8*sp)],
-                                spacing=int(6*sp))
-        _add_bg(filter_row, (0.07, 0.09, 0.13, 1))
+        filter_row = BoxLayout(size_hint_y=None, height=dp(50),
+                                padding=[dp(10), dp(10)], spacing=dp(6))
+        _add_bg(filter_row, C_HEADER)
 
         self._active_filter = "ALL"
         self._filter_btns   = {}
-        for f in ("ALL","OPEN","WIN","LOSS","PENDING"):
-            btn = pill_btn(f, active=(f == "ALL"), width=58)
+        for f in ("ALL", "OPEN", "WIN", "LOSS", "PENDING"):
+            btn = pill_btn(f, active=(f == "ALL"), width=54)
             btn.bind(on_press=lambda b, flt=f: self._set_filter(flt))
             self._filter_btns[f] = btn
             filter_row.add_widget(btn)
         self.add_widget(filter_row)
 
-        count_row = BoxLayout(size_hint_y=None, height=int(26*sp),
-                               padding=[int(12*sp), 2])
-        self.count_lbl = lbl("0 sinyal", size=10,
-                              color=(0.45, 0.45, 0.45, 1))
+        count_row = BoxLayout(size_hint_y=None, height=dp(28),
+                               padding=[dp(14), dp(4)])
+        _add_bg(count_row, C_BG)
+        self.count_lbl = lbl("0 sinyal", size=10, color=C_TEXT_3)
         count_row.add_widget(self.count_lbl)
         self.add_widget(count_row)
 
         sv = ScrollView(size_hint=(1, 1))
-        self.sig_box = BoxLayout(orientation='vertical', spacing=int(6*sp),
+        self.sig_box = BoxLayout(orientation='vertical', spacing=dp(6),
                                   size_hint_y=None,
-                                  padding=[int(10*sp), int(4*sp)])
+                                  padding=[dp(12), dp(6)])
         self.sig_box.bind(minimum_height=self.sig_box.setter('height'))
         sv.add_widget(self.sig_box)
         self.add_widget(sv)
 
     def _set_filter(self, flt):
         self._active_filter = flt
-        gold = (1, 0.78, 0, 1)
-        dim  = (0.18, 0.20, 0.26, 1)
-        sp   = _sp()
         for f, btn in self._filter_btns.items():
             btn.canvas.before.clear()
-            _add_bg(btn, gold if f == flt else dim, radius=14)
-            btn.color = ((0.05, 0.05, 0.08, 1) if f == flt
-                         else (0.7, 0.7, 0.7, 1))
+            _add_bg(btn, C_GOLD if f == flt else (0.14, 0.16, 0.23, 1),
+                    radius=12)
+            btn.color = ((0.06, 0.06, 0.10, 1) if f == flt
+                         else C_TEXT_2)
+            btn.bold = (f == flt)
         self.refresh()
 
     def refresh(self):
-        sp = _sp()
         with bot.S.lock:
             signals = list(bot.S.signals_today)
             price   = bot.S.price
 
-        flt = self._active_filter
+        flt      = self._active_filter
         filtered = []
         for sig in reversed(signals):
             key = _sig_key(sig)
@@ -495,52 +543,52 @@ class SinyalTab(BoxLayout):
 
         if not filtered:
             empty = lbl("Belum ada sinyal.", size=12,
-                        color=(0.4, 0.4, 0.4, 1), halign='center')
+                        color=C_TEXT_3, halign='center')
             self.sig_box.add_widget(empty)
             return
 
         for sig, st in filtered[:40]:
-            col_bg, st_text = _STATUS_CFG.get(st, ((0.12,0.13,0.18,1), st))
+            col_bg, st_text = _STATUS_CFG.get(st, ((0.14, 0.15, 0.20, 1), st))
             card = BoxLayout(orientation='vertical',
-                             size_hint_y=None, height=int(90*sp),
-                             padding=[int(10*sp), int(6*sp)], spacing=2)
-            _add_bg(card, (0.10, 0.12, 0.17, 1), radius=8)
+                             size_hint_y=None, height=dp(94),
+                             padding=[dp(12), dp(8)], spacing=dp(3))
+            _add_bg(card, C_SURFACE, radius=10)
 
-            emo  = "S" if sig['type'] == 'sell' else "B"
-            t_col = (0.95,0.30,0.30,1) if sig['type']=='sell' else (0.25,0.85,0.45,1)
-            top = BoxLayout(size_hint_y=None, height=int(24*sp))
+            t_col = C_RED if sig['type'] == 'sell' else C_GREEN
+            top   = BoxLayout(size_hint_y=None, height=dp(24))
 
-            l1 = lbl(f"[b]{emo}ELL[/b]" if sig['type']=='sell'
-                     else f"[b]BUY[/b]",
-                     size=13, bold=True, color=t_col)
-            l2 = lbl(f"  {sig['tf']}  {sig.get('area','')}",
-                     size=11, color=(0.7,0.7,0.7,1))
-            st_lbl = lbl(f"[b]{st_text}[/b]", size=10, bold=True,
+            dir_txt = "[b]SELL[/b]" if sig['type'] == 'sell' else "[b]BUY[/b]"
+            l1  = lbl(dir_txt, size=13, bold=True, color=t_col)
+            l2  = lbl(f"  {sig['tf']}  {sig.get('area','')}",
+                      size=10.5, color=C_TEXT_2)
+            st_lbl = lbl(f"[b]{st_text}[/b]", size=9.5, bold=True,
                           color=col_bg, halign='right')
-            top.add_widget(l1); top.add_widget(l2); top.add_widget(st_lbl)
+            top.add_widget(l1)
+            top.add_widget(l2)
+            top.add_widget(st_lbl)
             card.add_widget(top)
 
-            row2 = BoxLayout(size_hint_y=None, height=int(20*sp))
-            row2.add_widget(lbl(f"Entry: {sig['entry']:.3f}", size=11,
-                                color=(0.85,0.85,0.85,1)))
-            row2.add_widget(lbl(f"SL: {sig['sl']:.3f}", size=11,
-                                color=(0.9,0.35,0.35,1)))
-            row2.add_widget(lbl(f"TP1: {sig['tp1']:.3f}", size=11,
-                                color=(0.3,0.85,0.45,1)))
+            card.add_widget(h_sep(color=(0.14, 0.16, 0.24, 1)))
+
+            row2 = BoxLayout(size_hint_y=None, height=dp(22), spacing=dp(4))
+            row2.add_widget(lbl(f"Entry: [b]{sig['entry']:.3f}[/b]",
+                                size=10.5, color=C_TEXT))
+            row2.add_widget(lbl(f"SL: {sig['sl']:.3f}", size=10.5,
+                                color=C_RED))
+            row2.add_widget(lbl(f"TP1: {sig['tp1']:.3f}", size=10.5,
+                                color=C_GREEN, halign='right'))
             card.add_widget(row2)
 
-            # Unrealized P&L if open
             if st == "OPEN" and price > 0:
-                unr = bot.calc_unrealized(
+                unr  = bot.calc_unrealized(
                     {"type": sig['type'], "entry": sig['entry']}, price)
                 sign = "+" if unr >= 0 else ""
-                unr_col = (0.2,0.9,0.4,1) if unr >= 0 else (0.9,0.3,0.3,1)
-                card.add_widget(lbl(f"P&L: {sign}{unr:.2f}", size=11,
-                                    color=unr_col))
+                unr_col = C_GREEN if unr >= 0 else C_RED
+                card.add_widget(lbl(f"P&L: {sign}{unr:.2f}",
+                                    size=10.5, color=unr_col))
 
-            ts_lbl = lbl(sig.get('ts',''), size=9,
-                          color=(0.35,0.35,0.45,1))
-            card.add_widget(ts_lbl)
+            card.add_widget(lbl(sig.get('ts', ''), size=9,
+                                color=C_TEXT_3))
             self.sig_box.add_widget(card)
 
 # ════════════════════════════════════════════════════════
@@ -548,77 +596,70 @@ class SinyalTab(BoxLayout):
 # ════════════════════════════════════════════════════════
 _FIBO_ROWS = [
     (2.414, "SL S2",   (0.85, 0.25, 0.25, 1)),
-    (2.236, "SELL",    (0.95, 0.30, 0.30, 1)),
-    (2.000, "SELL",    (0.95, 0.30, 0.30, 1)),
+    (2.236, "SELL",    C_RED),
+    (2.000, "SELL",    C_RED),
     (1.786, "SL S1",   (0.85, 0.25, 0.25, 1)),
-    (1.618, "SELL",    (0.95, 0.30, 0.30, 1)),
-    (1.500, "SELL",    (0.95, 0.30, 0.30, 1)),
-    (1.000, "HIGH",    (0.85, 0.85, 0.85, 1)),
-    (0.500, "MID",     (0.80, 0.80, 0.80, 1)),
-    (0.000, "LOW",     (0.85, 0.85, 0.85, 1)),
-    (-0.500, "BUY",   (0.25, 0.85, 0.45, 1)),
-    (-0.618, "BUY",   (0.25, 0.85, 0.45, 1)),
-    (-0.786, "SL B1", (0.25, 0.70, 0.30, 1)),
-    (-1.000, "BUY",   (0.25, 0.85, 0.45, 1)),
-    (-1.236, "BUY",   (0.25, 0.85, 0.45, 1)),
-    (-1.414, "SL B2", (0.25, 0.70, 0.30, 1)),
+    (1.618, "SELL",    C_RED),
+    (1.500, "SELL",    C_RED),
+    (1.000, "HIGH",    C_TEXT),
+    (0.500, "MID",     C_TEXT_2),
+    (0.000, "LOW",     C_TEXT),
+    (-0.500, "BUY",    C_GREEN),
+    (-0.618, "BUY",    C_GREEN),
+    (-0.786, "SL B1",  (0.18, 0.72, 0.35, 1)),
+    (-1.000, "BUY",    C_GREEN),
+    (-1.236, "BUY",    C_GREEN),
+    (-1.414, "SL B2",  (0.18, 0.72, 0.35, 1)),
 ]
 
 class FiboTab(BoxLayout):
     def __init__(self, **kw):
-        sp = _sp()
         super().__init__(orientation='vertical',
                          padding=[0, 0], spacing=0, **kw)
 
-        # TF Filter
-        tf_row = BoxLayout(size_hint_y=None, height=int(48*sp),
-                            padding=[int(10*sp), int(8*sp)], spacing=int(5*sp))
-        _add_bg(tf_row, (0.07, 0.09, 0.13, 1))
+        tf_row = BoxLayout(size_hint_y=None, height=dp(50),
+                            padding=[dp(10), dp(10)], spacing=dp(5))
+        _add_bg(tf_row, C_HEADER)
 
-        self._active_tf  = "5min"
-        self._tf_btns    = {}
+        self._active_tf = "5min"
+        self._tf_btns   = {}
         for tf in bot.TIMEFRAMES:
             label = bot.TF_LABEL[tf]
-            btn   = pill_btn(label, active=(tf == "5min"), width=52)
+            btn   = pill_btn(label, active=(tf == "5min"), width=50)
             btn.bind(on_press=lambda b, t=tf: self._set_tf(t))
             self._tf_btns[tf] = btn
             tf_row.add_widget(btn)
         self.add_widget(tf_row)
 
-        # Info bar (High / Low)
-        info_row = BoxLayout(size_hint_y=None, height=int(30*sp),
-                              padding=[int(12*sp), 2])
-        _add_bg(info_row, (0.08, 0.10, 0.14, 1))
-        self.hl_lbl = lbl("H: —   L: —", size=11,
-                           color=(0.55, 0.55, 0.55, 1))
+        info_row = BoxLayout(size_hint_y=None, height=dp(32),
+                              padding=[dp(14), dp(4)])
+        _add_bg(info_row, C_BG)
+        self.hl_lbl = lbl("H: —   L: —", size=10.5, color=C_TEXT_2)
         info_row.add_widget(self.hl_lbl)
         self.add_widget(info_row)
 
-        # Level list
         sv = ScrollView(size_hint=(1, 1))
         self.lv_box = BoxLayout(orientation='vertical', spacing=0,
                                  size_hint_y=None,
-                                 padding=[int(10*sp), int(4*sp)])
+                                 padding=[dp(10), dp(4)])
         self.lv_box.bind(minimum_height=self.lv_box.setter('height'))
         sv.add_widget(self.lv_box)
         self.add_widget(sv)
 
     def _set_tf(self, tf):
         self._active_tf = tf
-        gold = (1, 0.78, 0, 1)
-        dim  = (0.18, 0.20, 0.26, 1)
         for t, btn in self._tf_btns.items():
             btn.canvas.before.clear()
-            _add_bg(btn, gold if t == tf else dim, radius=14)
-            btn.color = ((0.05,0.05,0.08,1) if t == tf
-                         else (0.7,0.7,0.7,1))
+            _add_bg(btn, C_GOLD if t == tf else (0.14, 0.16, 0.23, 1),
+                    radius=12)
+            btn.color = ((0.06, 0.06, 0.10, 1) if t == tf
+                         else C_TEXT_2)
         self.refresh()
 
     def refresh(self):
-        sp = _sp()
         tf = self._active_tf
         with bot.S.lock:
-            d = bot.S.fibo.get(tf, {})
+            d     = bot.S.fibo.get(tf, {})
             price = bot.S.price
 
         self.lv_box.clear_widgets()
@@ -626,41 +667,40 @@ class FiboTab(BoxLayout):
         if not d:
             self.hl_lbl.text = "H: —   L: —"
             self.lv_box.add_widget(
-                lbl("Data belum tersedia. Menunggu...", size=12,
-                    color=(0.4, 0.4, 0.4, 1), halign='center'))
+                lbl("Data belum tersedia. Menunggu...", size=11.5,
+                    color=C_TEXT_3, halign='center'))
             return
 
         high   = d.get('high', 0)
         low    = d.get('low', 0)
         levels = d.get('levels', {})
-        self.hl_lbl.text = (f"H: {high:.3f}   L: {low:.3f}   "
-                            f"[color=ffaa00]{bot.TF_LABEL[tf]}[/color]")
+        tf_tag = f"[color=ffcc33]{bot.TF_LABEL[tf]}[/color]"
+        self.hl_lbl.text = (f"H: {high:.3f}   L: {low:.3f}   {tf_tag}")
 
-        row_h = int(34 * sp)
-        for lv, lname, col in _FIBO_ROWS:
+        row_h = dp(36)
+        for i, (lv, lname, col) in enumerate(_FIBO_ROWS):
             px = levels.get(lv)
             if px is None:
                 continue
 
-            row = BoxLayout(size_hint_y=None, height=row_h,
-                             padding=[int(8*sp), 0], spacing=int(6*sp))
-
-            # Highlight active price zone
             is_near = price > 0 and abs(price - px) < (high - low) * 0.015
-            bg_col  = (0.18, 0.20, 0.28, 1) if is_near else (0.09, 0.11, 0.16, 1)
-            _add_bg(row, bg_col)
+            row_bg  = (0.16, 0.19, 0.28, 1) if is_near else (
+                C_SURFACE_ALT if i % 2 == 0 else C_SURFACE)
+
+            row = BoxLayout(size_hint_y=None, height=row_h,
+                             padding=[dp(10), 0], spacing=dp(6))
+            _add_bg(row, row_bg)
 
             lv_str  = f"{lv:+.3f}".replace("+", " ")
-            lname_l = lbl(f"{lname}", size=11, bold=True, color=col)
-            lv_l    = lbl(lv_str,    size=10, color=(0.5,0.5,0.5,1))
-            px_l    = lbl(f"{px:.3f}", size=13, bold=True, color=col,
-                          halign='right')
+            lname_l = lbl(f"[b]{lname}[/b]", size=11, bold=True, color=col)
+            lv_l    = lbl(lv_str, size=9.5, color=C_TEXT_3)
+            px_l    = lbl(f"{px:.3f}", size=13, bold=True,
+                          color=col, halign='right')
 
-            # Distance indicator
-            dist = price - px if price > 0 else 0
-            dsign = "+" if dist >= 0 else ""
-            dist_l = lbl(f"{dsign}{dist:.1f}" if price > 0 else "",
-                          size=10, color=(0.5,0.5,0.5,1), halign='right')
+            dist    = price - px if price > 0 else 0
+            dsign   = "+" if dist >= 0 else ""
+            dist_l  = lbl((f"{dsign}{dist:.1f}" if price > 0 else ""),
+                           size=9.5, color=C_TEXT_3, halign='right')
 
             row.add_widget(lname_l)
             row.add_widget(lv_l)
@@ -671,30 +711,37 @@ class FiboTab(BoxLayout):
             self.lv_box.add_widget(h_sep())
 
 # ════════════════════════════════════════════════════════
-#  HEADER BAR (per-tab)
+#  HEADER BAR — premium styling
 # ════════════════════════════════════════════════════════
 class HeaderBar(BoxLayout):
     def __init__(self, title, subtitle="", **kw):
-        sp = _sp()
         super().__init__(orientation='vertical',
-                         size_hint_y=None, height=int(56*sp),
-                         padding=[int(16*sp), int(6*sp)], **kw)
-        _add_bg(self, (0.07, 0.08, 0.13, 1))
+                         size_hint_y=None, height=dp(58),
+                         padding=[dp(16), dp(8)], **kw)
+        _add_bg(self, C_HEADER)
 
-        row1 = BoxLayout(size_hint_y=None, height=int(26*sp))
-        t_lbl = lbl(f"[b]{title}[/b]", size=14, bold=True,
-                     color=(1, 0.78, 0, 1))
+        # bottom accent line
+        with self.canvas.after:
+            Color(*C_BORDER)
+            self._bot_line = Rectangle(pos=(self.x, self.y),
+                                        size=(self.width, 1))
+        self.bind(pos =lambda w, v: setattr(w._bot_line, 'pos',
+                                            (v[0], v[1])),
+                  size=lambda w, v: setattr(w._bot_line, 'size',
+                                            (v[0], 1)))
+
+        row1 = BoxLayout(size_hint_y=None, height=dp(26))
+        t_lbl = lbl(f"[b]{title}[/b]", size=14.5, bold=True,
+                     color=C_GOLD)
         row1.add_widget(t_lbl)
 
-        # Live clock on the right
         self.clock_lbl = lbl("", size=10,
-                              color=(0.4, 0.4, 0.4, 1), halign='right')
+                              color=C_TEXT_3, halign='right')
         row1.add_widget(self.clock_lbl)
         self.add_widget(row1)
 
         if subtitle:
-            self.add_widget(lbl(subtitle, size=10,
-                                color=(0.4, 0.4, 0.4, 1)))
+            self.add_widget(lbl(subtitle, size=9.5, color=C_TEXT_3))
 
         Clock.schedule_interval(self._tick, 1)
 
@@ -706,17 +753,16 @@ class HeaderBar(BoxLayout):
 # ════════════════════════════════════════════════════════
 class RootWidget(BoxLayout):
     def __init__(self, **kw):
-        sp = _sp()
         super().__init__(orientation='vertical', spacing=0, **kw)
-        _add_bg(self, (0.04, 0.04, 0.07, 1))
+        _add_bg(self, C_BG)
 
         self._header_host = BoxLayout(orientation='vertical',
                                        size_hint_y=None,
-                                       height=int(56*sp))
+                                       height=dp(58))
         self._headers = {
-            'dashboard': HeaderBar("ZIGZAG FIBO", "XAUUSD by GOGRAK"),
-            'sinyal':    HeaderBar("SINYAL",      "ZigZag Fibonacci"),
-            'fibo':      HeaderBar("FIBO LEVELS", "ZigZag Extension"),
+            'dashboard': HeaderBar("ZIGZAG FIBO",   "XAUUSD by GOGRAK"),
+            'sinyal':    HeaderBar("SINYAL",         "ZigZag Fibonacci"),
+            'fibo':      HeaderBar("FIBO LEVELS",    "ZigZag Extension"),
         }
 
         self.content = BoxLayout(orientation='vertical')
