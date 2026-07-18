@@ -164,64 +164,83 @@ def pill_btn(text, active=False, width=None):
     return btn
 
 # ════════════════════════════════════════════════════════
-#  CUSTOM ICONS — FIX: draw HANYA via bind (tidak immediate call)
-#  supaya tidak muncul di posisi 0,0 sebelum layout selesai
+#  CUSTOM ICON WIDGETS — binding SEKALI, warna diupdate via set_color()
+#  Root fix: tidak ada re-binding saat ganti tab → tidak menumpuk di (0,0)
 # ════════════════════════════════════════════════════════
-def _icon_grid(parent, color):
-    """3×3 grid — tab Dashboard. Bug fix: no immediate draw."""
-    def _redraw(w, *_):
-        w.canvas.clear()
-        sz  = min(w.width, w.height)
-        dot = max(3, sz / 7)
+class IconWidget(Widget):
+    """Base icon widget — binding pos/size hanya sekali, aman dari akkumulasi."""
+    def __init__(self, color, **kw):
+        super().__init__(**kw)
+        self._color = list(color)
+        # Satu kali bind — tidak pernah ditambah lagi
+        self.bind(pos=self._redraw, size=self._redraw)
+
+    def set_color(self, color):
+        """Update warna tanpa buat binding baru."""
+        self._color = list(color)
+        self._redraw()
+
+    def _redraw(self, *_):
+        # Guard: jangan gambar sebelum widget punya ukuran nyata
+        if self.width < 2 or self.height < 2:
+            return
+        self.canvas.clear()
+        self._draw()
+
+    def _draw(self):
+        pass  # dioverride subclass
+
+
+class GridIcon(IconWidget):
+    """3×3 dot grid — tab Dashboard."""
+    def _draw(self):
+        sz  = min(self.width, self.height)
+        dot = max(2.5, sz / 7.5)
         gap = (sz - dot * 3) / 4
-        ox  = w.x + gap
-        oy  = w.y + gap
-        with w.canvas:
-            Color(*color)
+        ox  = self.x + (self.width  - sz) / 2 + gap
+        oy  = self.y + (self.height - sz) / 2 + gap
+        with self.canvas:
+            Color(*self._color)
             for r in range(3):
                 for c in range(3):
                     Rectangle(
-                        pos =(ox + c * (dot + gap), oy + r * (dot + gap)),
+                        pos =(ox + c * (dot + gap),
+                              oy + r * (dot + gap)),
                         size=(dot, dot))
-    parent.bind(pos=_redraw, size=_redraw)
-    # Defer first draw ke frame berikutnya supaya layout sudah selesai
-    Clock.schedule_once(lambda *_: _redraw(parent), 0)
 
-def _icon_bars(parent, color):
-    """Bar-chart — tab Sinyal. Bug fix: no immediate draw at (0,0)."""
-    heights_ratio = [0.40, 0.70, 0.50, 0.90, 0.60]
-    def _draw(w, *_):
-        w.canvas.clear()
-        n    = len(heights_ratio)
-        bar_w = max(2, w.width  / (n * 2))
-        gap   = bar_w * 0.6
+
+class BarsIcon(IconWidget):
+    """Bar-chart — tab Sinyal."""
+    _ratios = [0.40, 0.72, 0.52, 0.92, 0.62]
+
+    def _draw(self):
+        n     = len(self._ratios)
+        bar_w = max(2.0, self.width / (n * 2.2))
+        gap   = bar_w * 0.55
         total = bar_w * n + gap * (n - 1)
-        ox    = w.x + (w.width - total) / 2
-        with w.canvas:
-            Color(*color)
-            for i, hr in enumerate(heights_ratio):
-                h = w.height * hr
-                Rectangle(pos=(ox + i * (bar_w + gap), w.y + 1),
+        ox    = self.x + (self.width - total) / 2
+        with self.canvas:
+            Color(*self._color)
+            for i, hr in enumerate(self._ratios):
+                h = self.height * hr
+                Rectangle(pos =(ox + i * (bar_w + gap), self.y + 1),
                           size=(bar_w, h))
-    parent.bind(pos=_draw, size=_draw)
-    Clock.schedule_once(lambda *_: _draw(parent), 0)
 
-def _icon_zigzag(parent, color):
-    """ZigZag line — tab Fibo. Bug fix: no immediate draw at (0,0)."""
-    def _draw(w, *_):
-        w.canvas.clear()
-        pw, ph = w.width, w.height
-        # 5-point zigzag that fills the icon area proportionally
-        xs = [0.05, 0.25, 0.50, 0.75, 0.95]
-        ys = [0.30,  0.85, 0.20, 0.70, 0.40]
+
+class ZigzagIcon(IconWidget):
+    """ZigZag line — tab Fibo."""
+    _xs = [0.04, 0.26, 0.50, 0.74, 0.96]
+    _ys = [0.28, 0.84, 0.18, 0.72, 0.38]
+
+    def _draw(self):
         pts = []
-        for xr, yr in zip(xs, ys):
-            pts += [w.x + xr * pw, w.y + yr * ph]
-        with w.canvas:
-            Color(*color)
-            Line(points=pts, width=max(1.4, pw * 0.05))
-    parent.bind(pos=_draw, size=_draw)
-    Clock.schedule_once(lambda *_: _draw(parent), 0)
+        for xr, yr in zip(self._xs, self._ys):
+            pts += [self.x + xr * self.width,
+                    self.y + yr * self.height]
+        with self.canvas:
+            Color(*self._color)
+            Line(points=pts, width=max(1.4, self.width * 0.055))
+
 
 # ════════════════════════════════════════════════════════
 #  BOTTOM NAV — premium styling
@@ -242,19 +261,21 @@ class BottomNav(BoxLayout):
         self._on_switch = on_switch
         self._btns      = {}
 
+        icon_sz = dp(22)
         items = [
-            ('dashboard', _icon_grid,   'Dashboard'),
-            ('sinyal',    _icon_bars,   'Sinyal'),
-            ('fibo',      _icon_zigzag, 'Fibo'),
+            ('dashboard', GridIcon,   'Dashboard'),
+            ('sinyal',    BarsIcon,   'Sinyal'),
+            ('fibo',      ZigzagIcon, 'Fibo'),
         ]
 
-        for key, icon_fn, label_text in items:
+        for key, IconCls, label_text in items:
             col = BoxLayout(orientation='vertical',
                             padding=[0, dp(7)], spacing=dp(3))
 
-            icon_sz  = dp(22)
-            icon_w   = Widget(size_hint=(None, None), size=(icon_sz, icon_sz))
-            icon_fn(icon_w, C_NAV_INACTIVE)
+            # Buat IconWidget — binding internal, tidak pernah di-rebind
+            icon_w = IconCls(color=C_NAV_INACTIVE,
+                             size_hint=(None, None),
+                             size=(icon_sz, icon_sz))
 
             icon_row = BoxLayout(size_hint_y=None, height=icon_sz)
             icon_row.add_widget(Widget())
@@ -266,10 +287,11 @@ class BottomNav(BoxLayout):
             col.add_widget(icon_row)
             col.add_widget(txt_l)
 
-            btn = Button(background_color=(0,0,0,0), background_normal='')
+            btn = Button(background_color=(0, 0, 0, 0), background_normal='')
             btn.add_widget(col)
             btn.bind(on_press=lambda b, k=key: self._tap(k))
-            self._btns[key] = (btn, icon_w, txt_l, icon_fn)
+            # Simpan icon_w langsung — tidak perlu simpan icon_fn lagi
+            self._btns[key] = (btn, icon_w, txt_l)
             self.add_widget(btn)
 
         self._set_active('dashboard')
@@ -282,9 +304,9 @@ class BottomNav(BoxLayout):
         self._set_active(key)
 
     def _set_active(self, key):
-        for k, (btn, icon_w, txt_l, icon_fn) in self._btns.items():
+        for k, (btn, icon_w, txt_l) in self._btns.items():
             c = C_GOLD if k == key else C_NAV_INACTIVE
-            icon_fn(icon_w, c)
+            icon_w.set_color(c)   # update warna saja, tanpa binding baru
             txt_l.color = c
             txt_l.bold  = (k == key)
 
