@@ -14,10 +14,12 @@ version = 6.0
 entrypoint = main.py
 
 # ── Dependensi Python ─────────────────────────────────────────────────────────
-# FIX: JANGAN tulis python3==x.x.x
-# p4a pakai hostpython3 versi terbaru (misal 3.14.2).
-# Kalau python3 di-pin ke versi lain → error "should have same version as hostpython3"
-requirements = python3,kivy==2.3.0,requests,websocket-client,plyer,certifi
+# FIX v3:
+#   - Harus pin KEDUANYA: python3==3.11.9 DAN hostpython3==3.11.9
+#   - Kalau hanya python3 yang di-pin → error "3.11.9 != 3.14.2" (p4a default hostpython3 ke 3.14.2)
+#   - Kalau tidak di-pin sama sekali → p4a pakai Python 3.14.2, pyjnius tidak ada wheel-nya
+#   - Python 3.11.9 dipilih karena pyjnius 1.7.0 punya binary wheel Android untuk Python 3.11
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,websocket-client,plyer,certifi
 
 # ── Orientasi & UI ────────────────────────────────────────────────────────────
 orientation = portrait
