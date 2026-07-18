@@ -17,7 +17,7 @@ jobs:
 
     env:
       # Bump ini untuk force-invalidate semua cache
-      CACHE_VER: v11
+      CACHE_VER: v12
       # System SDK path (sudah ada di GitHub runner, tidak perlu download)
       ANDROID_SDK:  /usr/local/lib/android/sdk
       ANDROID_NDK:  /usr/local/lib/android/sdk/ndk/27.3.13750724
@@ -151,9 +151,12 @@ jobs:
           echo "Menggunakan archs: $ARCHS"
 
       # ── 12. BUILD APK ───────────────────────────────────────────────────────
-      # KUNCI FIX: Set ANDROIDSDK dan ANDROIDNDK ke system path.
-      # Buildozer baca kedua env var ini dan TIDAK download SDK/NDK sendiri.
-      # System SDK sudah punya build-tools, platform-tools, NDK 27.3 — siap pakai.
+      # Buildozer dijalankan dengan || true agar workflow tidak langsung stop
+      # jika Gradle gagal (semua kompilasi Python/Kivy sudah OK di tahap ini).
+      # Setelah buildozer, skrip memeriksa build.gradle yang di-generate p4a:
+      # - Jika ada "implementation ''" (string kosong) — Gradle 8.x error —
+      #   baris itu dihapus dan gradlew dijalankan ulang secara manual.
+      # - Jika buildozer gagal SEBELUM tahap Gradle, exit dengan error.
       - name: Build APK (debug)
         env:
           ANDROIDSDK:  ${{ env.ANDROID_SDK }}
@@ -163,7 +166,48 @@ jobs:
           echo "SDK: $ANDROIDSDK"
           echo "NDK: $ANDROIDNDK"
           ls "$ANDROIDSDK/build-tools/" 2>/dev/null || echo "WARNING: build-tools tidak ditemukan!"
-          buildozer -v android debug 2>&1 | tee build.log
+
+          # Jalankan buildozer — boleh gagal di Gradle, jangan exit dulu
+          buildozer -v android debug 2>&1 | tee build.log && BUILD_OK=1 || BUILD_OK=0
+
+          DIST_DIR=".buildozer/android/platform/build-arm64-v8a/dists/zigzagfibo"
+          BUILD_GRADLE="$DIST_DIR/build.gradle"
+
+          if [ "$BUILD_OK" = "1" ]; then
+            echo "=== buildozer SUKSES — APK sudah di bin/ ==="
+          elif [ -f "$BUILD_GRADLE" ]; then
+            echo "=== buildozer GAGAL di Gradle — patch build.gradle dan retry ==="
+            echo "--- build.gradle sebelum patch (sekitar implementation) ---"
+            grep -n "implementation" "$BUILD_GRADLE" || true
+
+            # Hapus baris 'implementation ''' (string kosong) — p4a bug + Gradle 8.x strict
+            sed -i "/^\s*implementation\s*''\s*$/d" "$BUILD_GRADLE"
+            # Juga hapus format dengan double-quote kosong
+            sed -i '/^\s*implementation\s*""\s*$/d' "$BUILD_GRADLE"
+
+            echo "--- build.gradle setelah patch ---"
+            grep -n "implementation" "$BUILD_GRADLE" || true
+
+            echo "=== Re-running gradlew ==="
+            cd "$DIST_DIR"
+            chmod +x gradlew
+            ./gradlew clean assembleDebug 2>&1 | tee -a $GITHUB_WORKSPACE/build.log
+            GRADLE_EXIT=${PIPESTATUS[0]}
+            cd $GITHUB_WORKSPACE
+
+            # Kumpulkan APK ke bin/
+            mkdir -p bin
+            find "$DIST_DIR" -name "*.apk" -exec cp {} bin/ \; 2>/dev/null || true
+
+            if [ "$GRADLE_EXIT" != "0" ]; then
+              echo "=== gradlew masih GAGAL setelah patch ==="
+              exit 1
+            fi
+          else
+            echo "=== buildozer GAGAL sebelum tahap Gradle (build.gradle belum dibuat) ==="
+            echo "=== Cek log di atas untuk error kompilasi ==="
+            exit 1
+          fi
 
       # ── 13. ccache stats ────────────────────────────────────────────────────
       - name: ccache stats
