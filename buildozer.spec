@@ -41,8 +41,12 @@ android.ndk_path = /usr/local/lib/android/sdk/ndk/27.3.13750724
 # Arsitektur Target
 android.archs = arm64-v8a
 
-# Ikon
-icon.filename = %(source.dir)s/icon.png
+# Ikon & Presplash
+# presplash.png = solid dark PNG (#0a0a14) — menggantikan splash Kivy default
+# sehingga app langsung tampil layar gelap tanpa logo/Loading...
+icon.filename     = %(source.dir)s/icon.png
+android.presplash = %(source.dir)s/presplash.png
+android.presplash_color = #0a0a14
 
 # Backup
 android.allow_backup = True
